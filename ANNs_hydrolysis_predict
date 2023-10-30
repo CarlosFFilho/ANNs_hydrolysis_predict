@@ -1,0 +1,174 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+import math as mt
+from sklearn.neural_network import MLPRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+
+
+# IMPORTANDO OS DADOS OPERACIONAIS GERADOS NO ASPEN PLUS
+
+operational_data = pd.read_excel('hydro_data.xlsx') 
+operational_df = pd.DataFrame(operational_data, columns=['Alimentação de água (kmol/h)', 'N° de tubos', 'Pressão de operação (bar)', 'Vazão de saída de ácido oleico (kg/h)', 'MFTRIO', 'ENERGY (KW)', 'CO2EMISS', 'UTILCOST']) #Dataframe operacional
+
+
+# IMPORTANDO OS DADOS PARA OS CÁLCULOS ECONÔMICOS
+
+economic_data_utilities = pd.read_excel('db_optimizer.xlsx')
+economic_data_mps = pd.read_excel('db_optimizer2.xlsx')
+economic_data_outros = pd.read_excel('db_optimizer3.xlsx')
+economic_data_depreciacao = pd.read_excel('db_optimizer4.xlsx')
+economic_data_eletricidade = pd.read_excel('db_optimizer5.xlsx')
+
+
+# CALCULANDO OS INDICADORES ECONÔMICOS COM OS DADOS IMPORTADOS ANTERIORMENTE
+
+preco_reator_tubular__metro = 9460 #Baseando-se nos trabalhos feitos por Albuquerque et al., 2019
+
+COP = np.zeros(len(operational_df['N° de tubos'])) #Construindo o vetor COP para um posterior preenchimento
+CTC = np.zeros(len(operational_df['N° de tubos'])) #Construindo o vetor CTC para um posterior preenchimento
+TAC = np.zeros(len(operational_df['N° de tubos'])) #Construindo o vetor TAC para um posterior preenchimento
+PBP = np.zeros(len(operational_df['N° de tubos'])) #Construindo o vetor PBP para um posterior preenchimento
+CO2 = np.zeros(len(operational_df['N° de tubos'])) #Construindo o vetor CO2 para um posterior preenchimento
+
+for i in range(len(operational_df['N° de tubos'])):
+    
+    ## AQUECEDOR (TROCADOR DE CALOR)
+    
+    Q = (operational_df['ENERGY (KW)'][i])*3412.14 #Cálculo da carga térmica
+    design_pressure = 56*14.5 #Cálculo da pressão de projeto
+    Cb = mt.exp(0.32325+0.766*(mt.log(Q))) #Cálculo da base de custos para um trocado de calor
+    Fm = 1.7 #Adotando um reator revestido de aço inoxidável
+    Fp = 0.986 - 0.0035*(design_pressure/500)+0.0175*(design_pressure/500)**2 #Cálculo do fator de pressão
+    cost_he = Fp*Fm*Cb #Custo final do trocador de calor
+    
+    ## REATOR TUBULAR
+    
+    cost_reator = preco_reator_tubular__metro*(operational_df['N° de tubos'][i])*1.25 #Custo do reator tubular baseando-se no seu N° de tubos (80 cm por tubo)
+    
+    custo_equipamento = cost_he + cost_reator
+    custo_mps = (operational_df['Alimentação de água (kmol/h)'][i])*(economic_data_mps['Media'][1])*18+(3978.362)*(economic_data_mps['Media'][2]) #Custo com matérias-primas, dada a alimentação de OGRs de 3978.362 kg/h
+    custo_etericidade_hora = (operational_df['ENERGY (KW)'][i])*(economic_data_eletricidade['Custos de eletricidade ($/kWh)'][0])
+    tempo_depreciacao_equipamento_anos = 12
+    tempo_depreciacao_catalisador_anos = 16
+    volume_catalisador_i = 0.125
+    custo_total_catalisador_i = (volume_catalisador_i*economic_data_mps['Media'][4])*4.6
+    custo_total_catalisador_hora_i = custo_total_catalisador_i/(tempo_depreciacao_catalisador_anos*365*24)
+    custo_instalacao = 0.39*custo_equipamento
+    custo_manutencao = 0.32*custo_equipamento
+    custo_logistica = 0.08*custo_equipamento
+    custo_mao_de_obra = 0.08*custo_equipamento
+    waste_treatament_cost = 0.0136*volume_catalisador_i #Custo de tratamento de resíduos
+    custo_utilidade_h = operational_df['UTILCOST'][i]
+    
+    COP[i] = custo_mps+custo_etericidade_hora+custo_total_catalisador_hora_i+((((custo_manutencao+custo_mao_de_obra)/tempo_depreciacao_equipamento_anos)/365)/24)
+    CTC[i] = custo_equipamento+((custo_mps+custo_etericidade_hora+custo_total_catalisador_hora_i)*tempo_depreciacao_equipamento_anos*365*24)+custo_instalacao+custo_manutencao+custo_logistica+custo_mao_de_obra #Ao longo da depreciação do equipamento
+    TAC[i] = custo_utilidade_h*365*24+((custo_equipamento+custo_instalacao+custo_manutencao)/3)+waste_treatament_cost*365*24
+    PBP[i] = (custo_equipamento)/((1-0.15)*(operational_df['Vazão de saída de ácido oleico (kg/h)'][i])*(economic_data_mps['Media'][3])+0.08*custo_equipamento)
+    CO2[i] = operational_df['CO2EMISS'][i]
+
+operational_df.insert(5, "COP (US$)", COP) #Inserindo o COP no dataframe operacional
+operational_df.insert(6, "CTC (US$)", CTC) #Inserindo o CTC no dataframe operacional
+operational_df.insert(7, "TAC (US$)", TAC) #Inserindo o TAC no dataframe operacional
+operational_df.insert(8, "PBP (anos)", PBP) #Inserindo o PBP no dataframe operacional
+operational_df.insert(9, "Emissão de CO2 (kg/h)", CO2) #Inserindo a emissão de CO2 no dataframe operacional
+
+# IDENTIFICANDO A INSTENSIDADE DA CORRELAÇÃO ENTRE AS VARIÁVEIS DE PROJETO (HEATMAP)
+
+matrix_df = operational_df.iloc[:, [0,1,2,3,5,6,7,8,9]]
+
+correlation_matrix = matrix_df.corr()
+
+plt.figure(figsize=(10, 8))
+heatmap = sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap='RdBu_r', linewidths=.5, annot_kws={"size": 12, "weight": "bold"}, center=0, vmin=-1, vmax=1)
+heatmap.set_xticklabels(heatmap.get_xticklabels(), size=12, family="serif", weight="bold")
+heatmap.set_yticklabels(heatmap.get_yticklabels(), size=12, family="serif", weight="bold")
+plt.show()
+
+#_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________
+
+# DIVISÃO DE DADOS DE TREINO E DE TESTE
+
+operational_df_x = operational_df.iloc[:, :3]
+operational_df_Y = operational_df.iloc[:, 3:]
+
+X_train, X_test, y_train, y_test = train_test_split(operational_df_x, operational_df_Y, test_size=0.2, random_state=42)
+
+previsores = X_train
+
+scaler = StandardScaler()
+previsores = scaler.fit_transform(previsores)
+test = scaler.transform(X_test)
+
+# IMPLEMENTANDO A RNA - VAZÃO DE OA
+
+oa_flow = y_train.iloc[:, 0].values
+
+regressor = MLPRegressor(hidden_layer_sizes=(8,), max_iter=1000000, activation='relu', random_state=42, solver = 'adam', batch_size = 50, verbose=1)
+regressor.fit(previsores, oa_flow)
+
+previsao_oa_flow = regressor.predict(test)
+
+
+# IMPLEMENTANDO A RNA - COP
+
+cop_df = y_train.iloc[:, 2].values
+
+regressor = MLPRegressor(hidden_layer_sizes=(8,), max_iter=1000000, activation='relu', random_state=42, solver = 'adam', batch_size = 50, verbose=1)
+regressor.fit(previsores, cop_df)
+
+previsao_cop = regressor.predict(test)
+
+
+# IMPLEMENTANDO A RNA - CTC
+
+ctc_df = y_train.iloc[:, 3].values
+
+regressor = MLPRegressor(hidden_layer_sizes=(8,), max_iter=1000000, activation='relu', random_state=42, solver = 'adam', batch_size = 50, verbose=1)
+regressor.fit(previsores, ctc_df)
+
+previsao_ctc = regressor.predict(test)
+
+
+# IMPLEMENTANDO A RNA - TAC
+
+tac_df = y_train.iloc[:, 4].values
+
+regressor = MLPRegressor(hidden_layer_sizes=(8,), max_iter=1000000, activation='relu', random_state=42, solver = 'adam', batch_size = 50, verbose=1)
+regressor.fit(previsores, tac_df)
+
+previsao_tac = regressor.predict(test)
+
+
+# IMPLEMENTANDO A RNA - PBP
+
+pbp_df = y_train.iloc[:, 5].values
+
+regressor = MLPRegressor(hidden_layer_sizes=(8,), max_iter=1000000, activation='relu', random_state=42, solver = 'adam', batch_size = 50, verbose=1)
+regressor.fit(previsores, pbp_df)
+
+previsao_pbp = regressor.predict(test)
+
+
+# IMPLEMENTANDO A RNA - EMISSÃO DE CO2
+
+co2_df = y_train.iloc[:, 6].values
+
+regressor = MLPRegressor(hidden_layer_sizes=(8,), max_iter=1000000, activation='relu', random_state=42, solver = 'adam', batch_size = 50, verbose=1)
+regressor.fit(previsores, co2_df)
+
+previsao_co2 = regressor.predict(test)
+
+
+# CRIANDO O DATAFRAME DE PREDIÇÃO
+
+predict_df = X_test
+
+predict_df.insert(3, "OA_predict", previsao_oa_flow)
+predict_df.insert(4, "COP_predict", previsao_cop)
+predict_df.insert(5, "CTC_predict", previsao_ctc)
+predict_df.insert(6, "TAC_predict", previsao_tac)
+predict_df.insert(7, "PBP_predict", previsao_pbp)
+predict_df.insert(8, "CO2_predict", previsao_co2)
