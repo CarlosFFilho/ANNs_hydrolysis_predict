@@ -4,7 +4,7 @@ The hydrolysis of triglycerides (TAG) into free fatty acids (FFA) is a crucial s
 
 The implementation of neural networks in the prediction of process variables involves the construction of complex mathematical models that imitate the functioning of the human brain. These models are trained with historical process data and then used to predict the future behavior of variables based on new inputs. Neural networks are capable of learning complex patterns in data and can deal with non-linear relationships between variables. This makes them powerful tools for prediction in a wide range of industrial applications, including process control, production optimization and predictive maintenance.
 
-Project developed with the purpose of implementing Artificial Neural Networks (ANNs) in the prediction of economic, environmental and productivity indicators in a hydrolysis process aimed at the production of biodiesel.
+This project was developed with the purpose of implementing Artificial Neural Networks (ANNs) in the prediction of economic, environmental and productivity indicators in a hydrolysis process aimed at the production of biodiesel.
 
 Economic indicators:
 
