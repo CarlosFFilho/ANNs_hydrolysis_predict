@@ -1,3 +1,5 @@
+# IMPORTANDO BIBLIOTECAS
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -87,7 +89,6 @@ heatmap.set_xticklabels(heatmap.get_xticklabels(), size=12, family="serif", weig
 heatmap.set_yticklabels(heatmap.get_yticklabels(), size=12, family="serif", weight="bold")
 plt.show()
 
-#_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________
 
 # DIVISÃO DE DADOS DE TREINO E DE TESTE
 
@@ -101,6 +102,7 @@ previsores = X_train
 scaler = StandardScaler()
 previsores = scaler.fit_transform(previsores)
 test = scaler.transform(X_test)
+
 
 # IMPLEMENTANDO A RNA - VAZÃO DE OA
 
